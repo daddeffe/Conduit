@@ -21,6 +21,7 @@ import 'package:conduit/features/local_shell/presentation/local_shell_controller
 import 'package:conduit/features/local_shell/presentation/local_shell_instance_page.dart';
 import 'package:conduit/features/local_shell/presentation/local_shell_setup_page.dart';
 import 'package:conduit/features/local_shell/presentation/widgets/local_shell_section.dart';
+import 'package:conduit/features/port_forward/domain/port_forward_config_repository.dart';
 import 'package:conduit/features/port_forward/presentation/port_forward_sheet.dart';
 import 'package:conduit/features/sftp/domain/file_export.dart';
 import 'package:conduit/features/sftp/domain/sftp_repository.dart';
@@ -50,6 +51,7 @@ class HostsPage extends StatefulWidget {
     required this.sftpRepository,
     required this.backupService,
     required this.fileExport,
+    required this.portForwardConfigRepository,
     super.key,
   });
 
@@ -64,6 +66,7 @@ class HostsPage extends StatefulWidget {
   final SftpRepository sftpRepository;
   final AppBackupService backupService;
   final FileExport fileExport;
+  final PortForwardConfigRepository portForwardConfigRepository;
 
   @override
   State<HostsPage> createState() => _HostsPageState();
@@ -547,6 +550,7 @@ class _HostsPageState extends State<HostsPage> {
       builder: (_) => PortForwardSheet(
         host: host,
         hostKeyVerifier: widget.hostKeyVerifier,
+        configRepository: widget.portForwardConfigRepository,
       ),
     );
   }

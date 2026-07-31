@@ -3,21 +3,27 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:conduit/features/hosts/domain/saved_host.dart';
+import 'package:conduit/features/port_forward/domain/port_forward_config_repository.dart';
+import 'package:conduit/features/port_forward/domain/saved_port_forward_config.dart';
 import 'package:conduit/features/terminal/data/ssh_client_factory.dart';
 import 'package:conduit/features/terminal/data/ssh_error_formatter.dart';
 import 'package:conduit/features/terminal/domain/host_key_verifier.dart';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/material.dart';
 
+enum _PortStatus { unknown, open, closed }
+
 class PortForwardSheet extends StatefulWidget {
   const PortForwardSheet({
     required this.host,
     required this.hostKeyVerifier,
+    required this.configRepository,
     super.key,
   });
 
   final SavedHost host;
   final HostKeyVerifier hostKeyVerifier;
+  final PortForwardConfigRepository configRepository;
 
   @override
   State<PortForwardSheet> createState() => _PortForwardSheetState();
@@ -31,12 +37,18 @@ class _PortForwardSheetState extends State<PortForwardSheet> {
   final _localPortController = TextEditingController();
   final _remoteHostController = TextEditingController();
   final _remotePortController = TextEditingController();
+  final _nameController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+
+  List<SavedPortForwardConfig> _savedConfigs = [];
+  final _configPortStatus = <String, _PortStatus>{};
+  bool _loadingConfigs = false;
 
   @override
   void initState() {
     super.initState();
     _connect();
+    _loadConfigs();
   }
 
   @override
@@ -51,6 +63,7 @@ class _PortForwardSheetState extends State<PortForwardSheet> {
     _localPortController.dispose();
     _remoteHostController.dispose();
     _remotePortController.dispose();
+    _nameController.dispose();
     super.dispose();
   }
 
@@ -77,6 +90,95 @@ class _PortForwardSheetState extends State<PortForwardSheet> {
         _error = describeSshConnectionError(error);
       });
     }
+  }
+
+  Future<void> _loadConfigs() async {
+    setState(() => _loadingConfigs = true);
+    try {
+      final configs = await widget.configRepository.loadConfigs();
+      if (!mounted) return;
+      setState(() {
+        _savedConfigs = configs;
+        _loadingConfigs = false;
+      });
+      for (final config in configs) {
+        unawaited(_checkPortStatus(config));
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingConfigs = false);
+    }
+  }
+
+  Future<void> _checkPortStatus(SavedPortForwardConfig config) async {
+    setState(() => _configPortStatus[config.id] = _PortStatus.unknown);
+    try {
+      final socket = await Socket.connect(
+        config.remoteHost,
+        config.remotePort,
+        timeout: const Duration(seconds: 3),
+      );
+      unawaited(socket.close());
+      if (!mounted) return;
+      setState(() => _configPortStatus[config.id] = _PortStatus.open);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _configPortStatus[config.id] = _PortStatus.closed);
+    }
+  }
+
+  Future<void> _saveCurrentConfig() async {
+    final remoteHost = _remoteHostController.text.trim();
+    final remotePortText = _remotePortController.text.trim();
+    if (remoteHost.isEmpty || remotePortText.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Fill remote host and port first')),
+      );
+      return;
+    }
+    final remotePort = int.tryParse(remotePortText);
+    if (remotePort == null || remotePort < 1 || remotePort > 65535) return;
+
+    final localPortText = _localPortController.text.trim();
+    final localPort =
+        localPortText.isNotEmpty ? int.tryParse(localPortText) : null;
+
+    String? name;
+    if (_nameController.text.trim().isNotEmpty) {
+      name = _nameController.text.trim();
+    }
+
+    final config = SavedPortForwardConfig.create(
+      name: name,
+      localPort: localPort,
+      remoteHost: remoteHost,
+      remotePort: remotePort,
+    );
+
+    await widget.configRepository.addConfig(config);
+    setState(() => _savedConfigs.add(config));
+    _nameController.clear();
+    unawaited(_checkPortStatus(config));
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Configuration saved')),
+    );
+  }
+
+  Future<void> _deleteConfig(SavedPortForwardConfig config) async {
+    await widget.configRepository.removeConfig(config.id);
+    setState(() {
+      _savedConfigs.removeWhere((c) => c.id == config.id);
+      _configPortStatus.remove(config.id);
+    });
+  }
+
+  void _applyConfig(SavedPortForwardConfig config) {
+    _localPortController.text =
+        config.localPort != null ? config.localPort.toString() : '';
+    _remoteHostController.text = config.remoteHost;
+    _remotePortController.text = config.remotePort.toString();
   }
 
   Future<void> _addForward() async {
@@ -222,6 +324,8 @@ class _PortForwardSheetState extends State<PortForwardSheet> {
                   ] else if (_error != null) ...[
                     _errorBanner(theme, colorScheme),
                   ] else if (_client != null) ...[
+                    _savedConfigsSection(theme, colorScheme),
+                    const SizedBox(height: 16),
                     _forwardForm(theme, colorScheme),
                     const SizedBox(height: 16),
                     if (_entries.isNotEmpty) ...[
@@ -329,16 +433,189 @@ class _PortForwardSheetState extends State<PortForwardSheet> {
     );
   }
 
+  Widget _portStatusDot(_PortStatus status, ColorScheme colorScheme) {
+    final color = switch (status) {
+      _PortStatus.open => const Color(0xFF2ECC71),
+      _PortStatus.closed => const Color(0xFFE74C3C),
+      _PortStatus.unknown => colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+    };
+    return Container(
+      width: 10,
+      height: 10,
+      margin: const EdgeInsets.only(right: 8),
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+      ),
+    );
+  }
+
+  Widget _statusLabel(_PortStatus status) {
+    return switch (status) {
+      _PortStatus.open => 'Port open',
+      _PortStatus.closed => 'Port closed',
+      _PortStatus.unknown => 'Not checked',
+    };
+  }
+
+  Widget _savedConfigsSection(ThemeData theme, ColorScheme colorScheme) {
+    if (_loadingConfigs) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Center(child: SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        )),
+      );
+    }
+
+    if (_savedConfigs.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              'Saved configs',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${_savedConfigs.length}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        for (final config in _savedConfigs)
+          _savedConfigTile(config, theme, colorScheme),
+      ],
+    );
+  }
+
+  Widget _savedConfigTile(
+    SavedPortForwardConfig config,
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
+    final status = _configPortStatus[config.id] ?? _PortStatus.unknown;
+    final label = config.name.isNotEmpty
+        ? config.name
+        : '${config.remoteHost}:${config.remotePort}';
+
+    final details = StringBuffer();
+    if (config.localPort != null) {
+      details.write('127.0.0.1:${config.localPort} → ');
+    }
+    details.write('${config.remoteHost}:${config.remotePort}');
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+          ),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => _applyConfig(config),
+          child: Row(
+            children: [
+              _portStatusDot(status, colorScheme),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      details.toString(),
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _statusLabel(status),
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.delete_outline_rounded,
+                    size: 18, color: colorScheme.error),
+                onPressed: () => _deleteConfig(config),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                tooltip: 'Delete config',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _forwardForm(ThemeData theme, ColorScheme colorScheme) {
     return Form(
       key: _formKey,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'New forward',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
+          Row(
+            children: [
+              Text(
+                'New forward',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              SizedBox(
+                height: 32,
+                child: FilledButton.tonalIcon(
+                  onPressed: _saveCurrentConfig,
+                  icon: const Icon(Icons.bookmark_add_rounded, size: 16),
+                  label: const Text('Save', style: TextStyle(fontSize: 12)),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextFormField(
+            controller: _nameController,
+            decoration: const InputDecoration(
+              labelText: 'Name (optional)',
+              hintText: 'My database tunnel',
+              isDense: true,
             ),
           ),
           const SizedBox(height: 8),

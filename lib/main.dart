@@ -11,6 +11,8 @@ import 'package:conduit/features/backup/data/app_backup_service.dart';
 import 'package:conduit/features/hosts/data/secure_saved_hosts_repository.dart';
 import 'package:conduit/features/hosts/presentation/hosts_controller.dart';
 import 'package:conduit/features/hosts/presentation/hosts_page.dart';
+import 'package:conduit/features/port_forward/data/secure_port_forward_config_repository.dart';
+import 'package:conduit/features/port_forward/domain/port_forward_config_repository.dart';
 import 'package:conduit/features/local_shell/data/local_terminal_repository.dart';
 import 'package:conduit/features/local_shell/local_shell_licenses.dart';
 import 'package:conduit/features/local_shell/presentation/local_shell_controller.dart';
@@ -64,6 +66,8 @@ void main() {
     ConnectivityPlusNetwork(),
   );
   final sftpRepository = DartSshSftpRepository(hostKeyVerifier);
+  final portForwardConfigRepository =
+      SecurePortForwardConfigRepository(secureStorage);
   final backupService = AppBackupService(
     hostsController: hostsController,
     themeController: themeController,
@@ -86,6 +90,7 @@ void main() {
       sftpRepository: sftpRepository,
       backupService: backupService,
       fileExport: fileExport,
+      portForwardConfigRepository: portForwardConfigRepository,
     ),
   );
 }
@@ -103,6 +108,7 @@ class ConduitApp extends StatefulWidget {
     required this.sftpRepository,
     required this.backupService,
     required this.fileExport,
+    required this.portForwardConfigRepository,
     super.key,
   });
 
@@ -117,6 +123,7 @@ class ConduitApp extends StatefulWidget {
   final SftpRepository sftpRepository;
   final AppBackupService backupService;
   final FileExport fileExport;
+  final PortForwardConfigRepository portForwardConfigRepository;
 
   @override
   State<ConduitApp> createState() => _ConduitAppState();
@@ -260,6 +267,8 @@ class _ConduitAppState extends State<ConduitApp> with WidgetsBindingObserver {
                 sftpRepository: widget.sftpRepository,
                 backupService: widget.backupService,
                 fileExport: widget.fileExport,
+                portForwardConfigRepository:
+                    widget.portForwardConfigRepository,
               );
             },
           ),
