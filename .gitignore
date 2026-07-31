@@ -56,3 +56,6 @@ ios/Runner.xcodeproj/project.xcworkspace/xcuserdata/
 **/GeneratedPluginRegistrant.*
 website/node_modules/
 website/.nuxt/
+
+# FVM Version Cache
+.fvm/

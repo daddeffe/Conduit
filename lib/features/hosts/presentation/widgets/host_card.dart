@@ -1,7 +1,7 @@
 import 'package:conduit/features/hosts/domain/saved_host.dart';
 import 'package:flutter/material.dart';
 
-enum HostAction { files, edit, duplicate, copyAddress, delete }
+enum HostAction { files, edit, duplicate, copyAddress, portForward, delete }
 
 class HostCard extends StatelessWidget {
   const HostCard({
@@ -180,6 +180,15 @@ class HostCard extends StatelessWidget {
                           child: ListTile(
                             leading: Icon(Icons.content_copy_rounded),
                             title: Text('Copy address'),
+                            contentPadding: EdgeInsets.zero,
+                            minLeadingWidth: 24,
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: HostAction.portForward,
+                          child: ListTile(
+                            leading: Icon(Icons.swap_horiz_rounded),
+                            title: Text('Port forward'),
                             contentPadding: EdgeInsets.zero,
                             minLeadingWidth: 24,
                           ),

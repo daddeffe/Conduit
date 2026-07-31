@@ -21,6 +21,7 @@ import 'package:conduit/features/local_shell/presentation/local_shell_controller
 import 'package:conduit/features/local_shell/presentation/local_shell_instance_page.dart';
 import 'package:conduit/features/local_shell/presentation/local_shell_setup_page.dart';
 import 'package:conduit/features/local_shell/presentation/widgets/local_shell_section.dart';
+import 'package:conduit/features/port_forward/presentation/port_forward_sheet.dart';
 import 'package:conduit/features/sftp/domain/file_export.dart';
 import 'package:conduit/features/sftp/domain/sftp_repository.dart';
 import 'package:conduit/features/sftp/presentation/sftp_browser_page.dart';
@@ -535,6 +536,21 @@ class _HostsPageState extends State<HostsPage> {
     );
   }
 
+  Future<void> _openPortForward(SavedHost host) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => PortForwardSheet(
+        host: host,
+        hostKeyVerifier: widget.hostKeyVerifier,
+      ),
+    );
+  }
+
   Future<void> _openFiles(SavedHost host) async {
     await widget.hostsController.markConnected(host);
     if (!mounted) return;
@@ -587,6 +603,8 @@ class _HostsPageState extends State<HostsPage> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Copied ${host.endpoint}')));
+      case HostAction.portForward:
+        await _openPortForward(host);
       case HostAction.delete:
         await _confirmDelete(host);
     }
