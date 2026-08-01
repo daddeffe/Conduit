@@ -12,6 +12,7 @@ class HostCard extends StatelessWidget {
     required this.onAction,
     required this.onTagTap,
     this.dragHandle,
+    this.activeForwardCount = 0,
     super.key,
   });
 
@@ -22,6 +23,7 @@ class HostCard extends StatelessWidget {
   final ValueChanged<HostAction> onAction;
   final ValueChanged<String> onTagTap;
   final Widget? dragHandle;
+  final int activeForwardCount;
 
   @override
   Widget build(BuildContext context) {
@@ -99,6 +101,12 @@ class HostCard extends StatelessWidget {
                                 icon: authIcon,
                                 label: _authLabel(host),
                               ),
+                              if (activeForwardCount > 0)
+                                _MetaChip(
+                                  icon: Icons.swap_horiz_rounded,
+                                  label: '$activeForwardCount forward${activeForwardCount == 1 ? '' : 's'}',
+                                  selected: true,
+                                ),
                               for (final tag in host.tags)
                                 _MetaChip(
                                   icon: Icons.tag_rounded,

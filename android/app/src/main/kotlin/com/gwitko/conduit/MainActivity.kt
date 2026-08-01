@@ -32,7 +32,8 @@ class MainActivity : FlutterFragmentActivity() {
             when (call.method) {
                 "start" -> {
                     val sessionCount = call.argument<Int>("sessionCount") ?: 0
-                    BackgroundConnectionService.start(this, sessionCount)
+                    val forwardCount = call.argument<Int>("forwardCount") ?: 0
+                    BackgroundConnectionService.start(this, sessionCount, forwardCount)
                     result.success(null)
                 }
                 "stop" -> {
@@ -136,7 +137,8 @@ class BackgroundConnectionService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val sessionCount = intent?.getIntExtra(SESSION_COUNT_EXTRA, 0) ?: 0
-        val notification = buildNotification(sessionCount)
+        val forwardCount = intent?.getIntExtra(FORWARD_COUNT_EXTRA, 0) ?: 0
+        val notification = buildNotification(sessionCount, forwardCount)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
                 NOTIFICATION_ID,
@@ -166,7 +168,7 @@ class BackgroundConnectionService : Service() {
         manager.createNotificationChannel(channel)
     }
 
-    private fun buildNotification(sessionCount: Int): Notification {
+    private fun buildNotification(sessionCount: Int, forwardCount: Int): Notification {
         val launchIntent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
             this,
@@ -183,11 +185,19 @@ class BackgroundConnectionService : Service() {
         }
 
         val sessionLabel = if (sessionCount == 1) "session" else "sessions"
+        val forwardLabel = if (forwardCount == 1) "forward" else "forwards"
+
+        val text = when {
+            sessionCount > 0 && forwardCount > 0 ->
+                "$sessionCount $sessionLabel, $forwardCount $forwardLabel"
+            forwardCount > 0 -> "$forwardCount active $forwardLabel"
+            else -> "$sessionCount active $sessionLabel"
+        }
 
         return builder
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("Conduit")
-            .setContentText("$sessionCount active $sessionLabel")
+            .setContentText(text)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
@@ -197,10 +207,12 @@ class BackgroundConnectionService : Service() {
         private const val CHANNEL_ID = "ssh_sessions"
         private const val NOTIFICATION_ID = 1001
         private const val SESSION_COUNT_EXTRA = "session_count"
+        private const val FORWARD_COUNT_EXTRA = "forward_count"
 
-        fun start(context: Context, sessionCount: Int) {
+        fun start(context: Context, sessionCount: Int, forwardCount: Int = 0) {
             val intent = Intent(context, BackgroundConnectionService::class.java).apply {
                 putExtra(SESSION_COUNT_EXTRA, sessionCount)
+                putExtra(FORWARD_COUNT_EXTRA, forwardCount)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)

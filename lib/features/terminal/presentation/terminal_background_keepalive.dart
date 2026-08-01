@@ -5,8 +5,11 @@ class TerminalBackgroundKeepalive {
 
   static const _channel = MethodChannel('conduit/background_keepalive');
 
-  Future<void> start({required int sessionCount}) async {
-    await _channel.invokeMethod<void>('start', {'sessionCount': sessionCount});
+  Future<void> start({required int sessionCount, int forwardCount = 0}) async {
+    await _channel.invokeMethod<void>('start', {
+      'sessionCount': sessionCount,
+      'forwardCount': forwardCount,
+    });
   }
 
   Future<void> stop() async {

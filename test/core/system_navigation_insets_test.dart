@@ -9,14 +9,69 @@ import 'package:conduit/features/hosts/domain/saved_host.dart';
 import 'package:conduit/features/hosts/presentation/hosts_controller.dart';
 import 'package:conduit/features/local_shell/domain/local_shell_state.dart';
 import 'package:conduit/features/local_shell/presentation/local_shell_controller.dart';
+import 'package:conduit/features/port_forward/domain/persistent_forward_repository.dart';
+import 'package:conduit/features/port_forward/domain/port_forward_config_repository.dart';
+import 'package:conduit/features/port_forward/domain/saved_persistent_forward.dart';
+import 'package:conduit/features/port_forward/domain/saved_port_forward_config.dart';
+import 'package:conduit/features/port_forward/presentation/persistent_forward_controller.dart';
+import 'package:conduit/features/terminal/data/ssh_client_factory.dart';
 import 'package:conduit/features/terminal/presentation/host_key_prompt_coordinator.dart';
 import 'package:conduit/features/terminal/presentation/terminal_page.dart';
 import 'package:conduit/features/terminal/presentation/terminal_workspace_controller.dart';
 import 'package:conduit/main.dart';
 import 'package:conduit_vt/conduit_vt.dart';
+import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../support/test_doubles.dart';
+
+class NoopPortForwardConfigRepository implements PortForwardConfigRepository {
+  const NoopPortForwardConfigRepository();
+
+  @override
+  Future<List<SavedPortForwardConfig>> loadConfigs() async => const [];
+
+  @override
+  Future<void> saveConfigs(List<SavedPortForwardConfig> configs) async {}
+
+  @override
+  Future<void> addConfig(SavedPortForwardConfig config) async {}
+
+  @override
+  Future<void> removeConfig(String id) async {}
+}
+
+class NoopPersistentForwardRepository implements PersistentForwardRepository {
+  const NoopPersistentForwardRepository();
+
+  @override
+  Future<List<SavedPersistentForward>> loadForwards() async => const [];
+
+  @override
+  Future<void> saveForwards(List<SavedPersistentForward> forwards) async {}
+
+  @override
+  Future<void> addForward(SavedPersistentForward forward) async {}
+
+  @override
+  Future<void> removeForward(String id) async {}
+}
+
+class ThrowingClientFactory extends SshClientFactory {
+  ThrowingClientFactory() : super(NoopVerifier());
+
+  @override
+  Future<SSHClient> connect(SavedHost host) async =>
+      throw StateError('connect should not be called in this test');
+}
+
+PersistentForwardController _noopPersistentForwardController() {
+  return PersistentForwardController(
+    hostsRepository: EmptyHostsRepository(),
+    clientFactory: ThrowingClientFactory(),
+    hostResolver: (_) => null,
+  );
+}
 
 void main() {
   group('system navigation insets', () {
@@ -89,6 +144,9 @@ void main() {
           hostKeyVerifier: verifier,
         ),
         fileExport: RecordingFileExport(),
+        portForwardConfigRepository:
+            const NoopPortForwardConfigRepository(),
+        persistentForwardController: _noopPersistentForwardController(),
       ),
     );
 
@@ -136,6 +194,9 @@ void main() {
           hostKeyVerifier: verifier,
         ),
         fileExport: RecordingFileExport(),
+        portForwardConfigRepository:
+            const NoopPortForwardConfigRepository(),
+        persistentForwardController: _noopPersistentForwardController(),
       ),
     );
 

@@ -22,6 +22,9 @@ import 'package:conduit/features/local_shell/presentation/local_shell_instance_p
 import 'package:conduit/features/local_shell/presentation/local_shell_setup_page.dart';
 import 'package:conduit/features/local_shell/presentation/widgets/local_shell_section.dart';
 import 'package:conduit/features/port_forward/domain/port_forward_config_repository.dart';
+import 'package:conduit/features/port_forward/domain/saved_persistent_forward.dart';
+import 'package:conduit/features/port_forward/presentation/persistent_forward_controller.dart';
+import 'package:conduit/features/port_forward/presentation/persistent_forwards_page.dart';
 import 'package:conduit/features/port_forward/presentation/port_forward_sheet.dart';
 import 'package:conduit/features/sftp/domain/file_export.dart';
 import 'package:conduit/features/sftp/domain/sftp_repository.dart';
@@ -52,6 +55,7 @@ class HostsPage extends StatefulWidget {
     required this.backupService,
     required this.fileExport,
     required this.portForwardConfigRepository,
+    required this.persistentForwardController,
     super.key,
   });
 
@@ -67,6 +71,7 @@ class HostsPage extends StatefulWidget {
   final AppBackupService backupService;
   final FileExport fileExport;
   final PortForwardConfigRepository portForwardConfigRepository;
+  final PersistentForwardController persistentForwardController;
 
   @override
   State<HostsPage> createState() => _HostsPageState();
@@ -154,12 +159,16 @@ class _HostsPageState extends State<HostsPage> {
                     listenable: Listenable.merge([
                       widget.hostsController,
                       widget.workspaceController,
+                      widget.persistentForwardController,
                     ]),
                     builder: (context, _) {
                       return HostsHero(
                         hostCount: widget.hostsController.hosts.length,
                         activeSessionCount:
                             widget.workspaceController.sessions.length,
+                        activeForwardCount: widget
+                            .persistentForwardController.activeForwardCount,
+                        onPersistentForwards: _openPersistentForwards,
                         onAppearance: () => showThemeSheet(
                           context: context,
                           controller: widget.themeController,
@@ -359,11 +368,20 @@ class _HostsPageState extends State<HostsPage> {
   }
 
   Widget _buildHostCard(SavedHost host, {Widget? dragHandle}) {
+    final activeForwardsForHost =
+        widget.persistentForwardController.forwards
+            .where(
+              (f) =>
+                  f.hostId == host.id &&
+                  f.status == ForwardStatus.active,
+            )
+            .length;
     return HostCard(
       host: host,
       active: widget.workspaceController.sessions.any(
         (session) => session.host.id == host.id,
       ),
+      activeForwardCount: activeForwardsForHost,
       selectedTag: _selectedTag,
       onConnect: () => _connect(host),
       onAction: (action) => _handleHostAction(action, host),
@@ -539,18 +557,25 @@ class _HostsPageState extends State<HostsPage> {
     );
   }
 
-  Future<void> _openPortForward(SavedHost host) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+  Future<void> _openPersistentForwards() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PersistentForwardsPage(
+          controller: widget.persistentForwardController,
+          hosts: widget.hostsController.hosts,
+        ),
       ),
-      builder: (_) => PortForwardSheet(
-        host: host,
-        hostKeyVerifier: widget.hostKeyVerifier,
-        configRepository: widget.portForwardConfigRepository,
+    );
+  }
+
+  Future<void> _openPortForward(SavedHost host) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PersistentForwardsPage(
+          controller: widget.persistentForwardController,
+          hosts: widget.hostsController.hosts,
+          initialHostId: host.id,
+        ),
       ),
     );
   }

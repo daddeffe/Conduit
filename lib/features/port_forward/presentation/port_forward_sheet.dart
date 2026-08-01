@@ -5,6 +5,8 @@ import 'dart:typed_data';
 import 'package:conduit/features/hosts/domain/saved_host.dart';
 import 'package:conduit/features/port_forward/domain/port_forward_config_repository.dart';
 import 'package:conduit/features/port_forward/domain/saved_port_forward_config.dart';
+import 'package:conduit/features/port_forward/domain/saved_persistent_forward.dart';
+import 'package:conduit/features/port_forward/presentation/persistent_forward_controller.dart';
 import 'package:conduit/features/terminal/data/ssh_client_factory.dart';
 import 'package:conduit/features/terminal/data/ssh_error_formatter.dart';
 import 'package:conduit/features/terminal/domain/host_key_verifier.dart';
@@ -18,12 +20,14 @@ class PortForwardSheet extends StatefulWidget {
     required this.host,
     required this.hostKeyVerifier,
     required this.configRepository,
+    this.persistentForwardController,
     super.key,
   });
 
   final SavedHost host;
   final HostKeyVerifier hostKeyVerifier;
   final PortForwardConfigRepository configRepository;
+  final PersistentForwardController? persistentForwardController;
 
   @override
   State<PortForwardSheet> createState() => _PortForwardSheetState();
@@ -49,6 +53,26 @@ class _PortForwardSheetState extends State<PortForwardSheet> {
     super.initState();
     _connect();
     _loadConfigs();
+  }
+
+  void _saveActiveForward() {
+    if (_entries.isEmpty) return;
+    final entry = _entries.first;
+    final name = _nameController.text.trim().isNotEmpty
+        ? _nameController.text.trim()
+        : '${widget.host.name}:${entry.localPort}→${entry.remoteHost}:${entry.remotePort}';
+    final forward = SavedPersistentForward.create(
+      name: name,
+      localPort: entry.localPort,
+      remoteHost: entry.remoteHost,
+      remotePort: entry.remotePort,
+      hostId: widget.host.id,
+      autoReconnect: true,
+    );
+    widget.persistentForwardController!.addAndSaveForward(forward);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Forward saved as persistent')),
+    );
   }
 
   @override
@@ -327,6 +351,16 @@ class _PortForwardSheetState extends State<PortForwardSheet> {
                     _savedConfigsSection(theme, colorScheme),
                     const SizedBox(height: 16),
                     _forwardForm(theme, colorScheme),
+
+                    const SizedBox(height: 8),
+                    if (_entries.isNotEmpty && widget.persistentForwardController != null) ...[
+                      FilledButton.icon(
+                        onPressed: _saveActiveForward,
+                        icon: const Icon(Icons.save_rounded, size: 18),
+                        label: const Text('Save as persistent'),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                     const SizedBox(height: 16),
                     if (_entries.isNotEmpty) ...[
                       Text(
@@ -450,7 +484,7 @@ class _PortForwardSheetState extends State<PortForwardSheet> {
     );
   }
 
-  Widget _statusLabel(_PortStatus status) {
+  String _statusLabel(_PortStatus status) {
     return switch (status) {
       _PortStatus.open => 'Port open',
       _PortStatus.closed => 'Port closed',

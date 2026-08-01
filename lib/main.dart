@@ -13,6 +13,7 @@ import 'package:conduit/features/hosts/presentation/hosts_controller.dart';
 import 'package:conduit/features/hosts/presentation/hosts_page.dart';
 import 'package:conduit/features/port_forward/data/secure_port_forward_config_repository.dart';
 import 'package:conduit/features/port_forward/domain/port_forward_config_repository.dart';
+import 'package:conduit/features/port_forward/presentation/persistent_forward_controller.dart';
 import 'package:conduit/features/local_shell/data/local_terminal_repository.dart';
 import 'package:conduit/features/local_shell/local_shell_licenses.dart';
 import 'package:conduit/features/local_shell/presentation/local_shell_controller.dart';
@@ -30,6 +31,7 @@ import 'package:conduit/features/terminal/domain/ssh_terminal_repository.dart';
 import 'package:conduit/features/terminal/presentation/host_key_prompt_coordinator.dart';
 import 'package:conduit/features/terminal/presentation/terminal_background_keepalive.dart';
 import 'package:conduit/features/terminal/presentation/terminal_workspace_controller.dart';
+import 'package:conduit/features/terminal/data/ssh_client_factory.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -45,9 +47,8 @@ void main() {
     const ThemePreferencesRepository(secureStorage),
   );
   final lockController = AppLockController(LocalAppAuthenticator());
-  final hostsController = HostsController(
-    const SecureSavedHostsRepository(secureStorage),
-  );
+  final hostsRepository = SecureSavedHostsRepository(secureStorage);
+  final hostsController = HostsController(hostsRepository);
   final promptCoordinator = HostKeyPromptCoordinator();
   final hostKeyVerifier = SecureHostKeyVerifier(
     secureStorage,
@@ -68,6 +69,17 @@ void main() {
   final sftpRepository = DartSshSftpRepository(hostKeyVerifier);
   final portForwardConfigRepository =
       SecurePortForwardConfigRepository(secureStorage);
+  final persistentForwardController = PersistentForwardController(
+    hostsRepository: hostsRepository,
+    clientFactory: SshClientFactory(hostKeyVerifier),
+    hostResolver: (hostId) {
+      try {
+        return hostsController.hosts.firstWhere((h) => h.id == hostId);
+      } catch (_) {
+        return null;
+      }
+    },
+  );
   final backupService = AppBackupService(
     hostsController: hostsController,
     themeController: themeController,
@@ -76,6 +88,7 @@ void main() {
   const fileExport = FilePickerFileExport();
 
   unawaited(themeController.load());
+  unawaited(persistentForwardController.load());
 
   runApp(
     ConduitApp(
@@ -91,6 +104,7 @@ void main() {
       backupService: backupService,
       fileExport: fileExport,
       portForwardConfigRepository: portForwardConfigRepository,
+      persistentForwardController: persistentForwardController,
     ),
   );
 }
@@ -109,6 +123,7 @@ class ConduitApp extends StatefulWidget {
     required this.backupService,
     required this.fileExport,
     required this.portForwardConfigRepository,
+    required this.persistentForwardController,
     super.key,
   });
 
@@ -124,6 +139,7 @@ class ConduitApp extends StatefulWidget {
   final AppBackupService backupService;
   final FileExport fileExport;
   final PortForwardConfigRepository portForwardConfigRepository;
+  final PersistentForwardController persistentForwardController;
 
   @override
   State<ConduitApp> createState() => _ConduitAppState();
@@ -141,6 +157,7 @@ class _ConduitAppState extends State<ConduitApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     widget.workspaceController.addListener(_syncBackgroundKeepalive);
+    widget.persistentForwardController.addListener(_syncBackgroundKeepalive);
     widget.themeController.addListener(_syncTerminalPreferences);
     _syncTerminalPreferences();
   }
@@ -165,22 +182,24 @@ class _ConduitAppState extends State<ConduitApp> with WidgetsBindingObserver {
 
   void _syncBackgroundKeepalive() {
     final sessionCount = widget.workspaceController.liveSessionCount;
-    _maybeRequestNotificationPermission(sessionCount);
+    final forwardCount = widget.persistentForwardController.activeForwardCount;
+    final totalCount = sessionCount + forwardCount;
+    _maybeRequestNotificationPermission(totalCount);
     final shouldRun =
-        sessionCount > 0 &&
+        totalCount > 0 &&
         (_lifecycleState == AppLifecycleState.hidden ||
             _lifecycleState == AppLifecycleState.paused);
 
     if (shouldRun == _keepaliveRunning &&
-        (!shouldRun || sessionCount == _keepaliveSessionCount)) {
+        (!shouldRun || totalCount == _keepaliveSessionCount)) {
       return;
     }
 
     _keepaliveRunning = shouldRun;
-    _keepaliveSessionCount = shouldRun ? sessionCount : 0;
+    _keepaliveSessionCount = shouldRun ? totalCount : 0;
     unawaited(
       (shouldRun
-              ? _backgroundKeepalive.start(sessionCount: sessionCount)
+              ? _backgroundKeepalive.start(sessionCount: sessionCount, forwardCount: forwardCount)
               : _backgroundKeepalive.stop())
           .catchError((_) {
             _keepaliveRunning = !shouldRun;
@@ -206,6 +225,7 @@ class _ConduitAppState extends State<ConduitApp> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     widget.workspaceController.removeListener(_syncBackgroundKeepalive);
+    widget.persistentForwardController.removeListener(_syncBackgroundKeepalive);
     widget.themeController.removeListener(_syncTerminalPreferences);
     unawaited(_backgroundKeepalive.stop());
     super.dispose();
@@ -269,6 +289,8 @@ class _ConduitAppState extends State<ConduitApp> with WidgetsBindingObserver {
                 fileExport: widget.fileExport,
                 portForwardConfigRepository:
                     widget.portForwardConfigRepository,
+                persistentForwardController:
+                    widget.persistentForwardController,
               );
             },
           ),

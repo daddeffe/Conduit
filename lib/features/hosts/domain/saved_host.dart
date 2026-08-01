@@ -1,4 +1,5 @@
 import 'package:conduit/features/snippets/domain/terminal_snippet.dart';
+import 'package:conduit/features/port_forward/domain/saved_persistent_forward.dart';
 
 enum SshAuthMethod { password, privateKey, hardwareKey, external }
 
@@ -150,6 +151,7 @@ class SavedHost {
     this.connectSnippetId = '',
     this.lastConnectedAt,
     this.isLocal = false,
+    this.persistentForwards = const [],
   });
 
   factory SavedHost.localShell({required String id, required String name}) {
@@ -190,6 +192,7 @@ class SavedHost {
   final String connectSnippetId;
   final DateTime? lastConnectedAt;
   final bool isLocal;
+  final List<SavedPersistentForward> persistentForwards;
 
   bool get isValid =>
       id.isNotEmpty &&
@@ -264,6 +267,7 @@ class SavedHost {
     DateTime? lastConnectedAt,
     bool clearLastConnectedAt = false,
     bool? isLocal,
+    List<SavedPersistentForward>? persistentForwards,
   }) {
     return SavedHost(
       id: id ?? this.id,
@@ -296,6 +300,7 @@ class SavedHost {
           ? null
           : lastConnectedAt ?? this.lastConnectedAt,
       isLocal: isLocal ?? this.isLocal,
+      persistentForwards: persistentForwards ?? this.persistentForwards,
     );
   }
 
@@ -334,6 +339,7 @@ class SavedHost {
       'connectSnippetId': connectSnippetId,
       'lastConnectedAt': lastConnectedAt?.toIso8601String(),
       'isLocal': isLocal,
+      'persistentForwards': [for (final fwd in persistentForwards) fwd.toJson()],
     };
   }
 
@@ -390,6 +396,10 @@ class SavedHost {
           ? null
           : DateTime.tryParse(lastConnectedAtRaw),
       isLocal: json['isLocal'] as bool? ?? false,
+      persistentForwards: (json['persistentForwards'] as List? ?? const [])
+          .whereType<Map<String, Object?>>()
+          .map(SavedPersistentForward.fromJson)
+          .toList(growable: false),
     );
   }
 }

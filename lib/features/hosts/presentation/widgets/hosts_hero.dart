@@ -5,19 +5,23 @@ class HostsHero extends StatelessWidget {
   const HostsHero({
     required this.hostCount,
     required this.activeSessionCount,
+    required this.activeForwardCount,
     required this.onAppearance,
     required this.onTrustedKeys,
     required this.onLock,
     required this.onOpenSessions,
+    this.onPersistentForwards,
     super.key,
   });
 
   final int hostCount;
   final int activeSessionCount;
+  final int activeForwardCount;
   final VoidCallback onAppearance;
   final VoidCallback onTrustedKeys;
   final VoidCallback onLock;
   final VoidCallback? onOpenSessions;
+  final VoidCallback? onPersistentForwards;
 
   @override
   Widget build(BuildContext context) {
@@ -30,6 +34,12 @@ class HostsHero extends StatelessWidget {
             children: [
               const ConduitGlyph(size: 30),
               const Spacer(),
+              _GhostIconButton(
+                tooltip: 'Persistent forwards',
+                icon: Icons.swap_horiz_rounded,
+                onPressed: onPersistentForwards,
+              ),
+              const SizedBox(width: 8),
               _GhostIconButton(
                 tooltip: 'Trusted keys',
                 icon: Icons.shield_outlined,
@@ -53,6 +63,7 @@ class HostsHero extends StatelessWidget {
           _StatsRow(
             hostCount: hostCount,
             activeSessionCount: activeSessionCount,
+            activeForwardCount: activeForwardCount,
           ),
           if (activeSessionCount > 0) ...[
             const SizedBox(height: 12),
@@ -68,10 +79,15 @@ class HostsHero extends StatelessWidget {
 }
 
 class _StatsRow extends StatelessWidget {
-  const _StatsRow({required this.hostCount, required this.activeSessionCount});
+  const _StatsRow({
+    required this.hostCount,
+    required this.activeSessionCount,
+    required this.activeForwardCount,
+  });
 
   final int hostCount;
   final int activeSessionCount;
+  final int activeForwardCount;
 
   @override
   Widget build(BuildContext context) {
@@ -92,6 +108,15 @@ class _StatsRow extends StatelessWidget {
             value: '$activeSessionCount',
             icon: Icons.bolt_rounded,
             accent: activeSessionCount > 0,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _StatTile(
+            label: 'Forwards',
+            value: '$activeForwardCount',
+            icon: Icons.swap_horiz_rounded,
+            accent: activeForwardCount > 0,
           ),
         ),
       ],
@@ -244,12 +269,12 @@ class _GhostIconButton extends StatelessWidget {
   const _GhostIconButton({
     required this.tooltip,
     required this.icon,
-    required this.onPressed,
+    this.onPressed,
   });
 
   final String tooltip;
   final IconData icon;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -264,7 +289,7 @@ class _GhostIconButton extends StatelessWidget {
         ),
         child: InkWell(
           borderRadius: BorderRadius.circular(10),
-          onTap: onPressed,
+          onTap: onPressed ?? () {},
           child: SizedBox(
             width: 40,
             height: 40,
